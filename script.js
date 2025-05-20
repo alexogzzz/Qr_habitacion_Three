@@ -21,7 +21,7 @@ document.body.appendChild(renderer.domElement);
 const controls = new FirstPersonControls(camera, renderer.domElement);
 controls.lookSpeed = 0.125; // Incrementar la sensibilidad del giro
 controls.movementSpeed = 2.5;
-controls.lookVertical = true;
+controls.lookVertical = false;
 
 
 
