@@ -139,12 +139,6 @@ loader.load('model/room.glb', function (gltf) {
             child.receiveShadow = false;
         }
     });
-
-    // Centrar el modelo en la escena
-    const box = new THREE.Box3().setFromObject(gltf.scene);
-    const center = box.getCenter(new THREE.Vector3());
-    gltf.scene.position.sub(center); // Centrar el modelo en el origen
-
     scene.add(gltf.scene);
     console.log("Modelo cargado correctamente");
 }, undefined, function (error) {
