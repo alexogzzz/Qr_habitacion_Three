@@ -17,64 +17,115 @@ renderer.setPixelRatio(pixelRatio);
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
-// Controles móviles: botones de movimiento y touch para mirar
+// Controles
+const controls = new FirstPersonControls(camera, renderer.domElement);
+controls.lookSpeed = 0.125; // Incrementar la sensibilidad del giro
+controls.movementSpeed = 2.5;
+controls.lookVertical = true;
+
+
+
+// Suavizado del giro
+let isDraggingView = false;
+
+renderer.domElement.addEventListener('pointerdown', (e) => {
+    isDraggingView = true;
+});
+
+renderer.domElement.addEventListener('pointermove', (e) => {
+    if (isDraggingView) {
+        const deltaX = e.movementX * controls.lookSpeed;
+        const deltaY = e.movementY * controls.lookSpeed * 0.2; // Reducir el movimiento vertical
+
+        // Actualizar la rotación de la cámara directamente
+        controls.lon += deltaX;
+        controls.lat -= deltaY;
+
+        // Limitar la latitud para evitar que la cámara gire completamente
+        controls.lat = Math.max(-85, Math.min(85, controls.lat));
+    }
+});
+
+renderer.domElement.addEventListener('pointerup', () => {
+    isDraggingView = false;
+});
+
+// Movimiento táctil
 if (isMobile) {
-    const controlsDiv = document.createElement('div');
-    controlsDiv.id = 'controlsDiv';
-    document.body.appendChild(controlsDiv);
+    const moveSpeed = 15; 
 
-    const btns = [
-        { id: 'forward', label: '▲' },
-        { id: 'left', label: '◀' },
-        { id: 'back', label: '▼' },
-        { id: 'right', label: '▶' }
-    ];
-    btns.forEach(({ id, label }) => {
-        const btn = document.createElement('button');
-        btn.id = id;
-        btn.innerText = label;
-        controlsDiv.appendChild(btn);
+    // Crear joystick virtual para movimiento en dispositivos móviles
+    const joystickContainer = document.createElement('div');
+    joystickContainer.id = 'joystick';
+    document.body.appendChild(joystickContainer);
+
+    const joystickInner = document.createElement('div');
+    joystickInner.id = 'joystickInner';
+    joystickContainer.appendChild(joystickInner);
+
+    let isDragging = false;
+    let startX = 0;
+    let startY = 0;
+    let movementDirection = new THREE.Vector3(); // Dirección del movimiento
+
+    joystickContainer.addEventListener('pointerdown', (e) => {
+        isDragging = true;
+        startX = e.clientX;
+        startY = e.clientY;
     });
 
-    const moveState = { forward: false, back: false, left: false, right: false };
-    const moveSpeed = 2.5;
+    window.addEventListener('pointermove', (e) => {
+        if (isDragging) {
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
 
-    ['forward', 'back', 'left', 'right'].forEach(dir => {
-        const btn = document.getElementById(dir);
-        btn.addEventListener('touchstart', e => {
-            e.preventDefault();
-            moveState[dir] = true;
-        });
-        btn.addEventListener('touchend', e => {
-            e.preventDefault();
-            moveState[dir] = false;
-        });
+            const distance = Math.min(Math.sqrt(dx * dx + dy * dy), 40); // Limitar el movimiento a 40px
+            const angle = Math.atan2(dy, dx);
+
+            const offsetX = Math.cos(angle) * distance;
+            const offsetY = Math.sin(angle) * distance;
+
+            joystickInner.style.transform = `translate(${offsetX}px, ${offsetY}px)`;
+
+            if (distance > 10) { // Solo mover si hay un desplazamiento significativo
+                movementDirection.x = Math.cos(angle);
+                movementDirection.z = -Math.sin(angle); // Invertir el eje Z para corregir el movimiento
+                movementDirection.normalize();
+            } else {
+                movementDirection.set(0, 0, 0); // Detener el movimiento si no hay desplazamiento
+            }
+        }
     });
 
-    const origUpdate = controls.update.bind(controls);
-    controls.update = function (delta) {
-        const direction = new THREE.Vector3();
-        if (moveState.forward) direction.z -= 1;
-        if (moveState.back) direction.z += 1;
-        if (moveState.left) direction.x -= 1;
-        if (moveState.right) direction.x += 1;
+    window.addEventListener('pointerup', () => {
+        isDragging = false;
+        joystickInner.style.transform = 'translate(0, 0)'; // Resetear la posición del joystick
+        movementDirection.set(0, 0, 0); // Detener el movimiento
+    });
 
-        if (direction.lengthSq() > 0) {
-            direction.normalize();
+    // Actualizar la posición del personaje en cada cuadro de animación
+    function updateMovement() {
+        if (movementDirection.lengthSq() > 0) { // Si hay movimiento
             const move = new THREE.Vector3();
             camera.getWorldDirection(move);
-            move.y = 0;
+            move.y = 0; // Evitar el movimiento vertical
             move.normalize();
 
-            const right = new THREE.Vector3().crossVectors(camera.up, move).normalize();
             const moveVec = new THREE.Vector3();
-            moveVec.addScaledVector(move, direction.z);
-            moveVec.addScaledVector(right, direction.x);
-            moveVec.normalize().multiplyScalar(moveSpeed * delta);
+            moveVec.addScaledVector(move, movementDirection.z * moveSpeed * 0.05);
+            moveVec.addScaledVector(new THREE.Vector3(-move.z, 0, move.x), movementDirection.x * moveSpeed * 0.05);
             camera.position.add(moveVec);
-        }
 
-        origUpdate(delta);
+            // Corregir la posición Y para evitar que el personaje "baje"
+            camera.position.y = 1.5; // Mantener la altura constante
+        }
+    }
+
+    // Llamar a `updateMovement` dentro del bucle de animación
+    const originalAnimate = animate;
+    animate = function () {
+        updateMovement();
+        originalAnimate();
     };
 }
 
@@ -108,12 +159,6 @@ loader.load('model/room.glb', function (gltf) {
     console.error("Error al cargar modelo:", error);
 });
 
-// Controles
-const controls = new FirstPersonControls(camera, renderer.domElement);
-controls.lookSpeed = 0.08;
-controls.movementSpeed = 2.5;
-controls.lookVertical = true;
-
 // Animación
 const clock = new THREE.Clock();
 function animate() {
@@ -122,6 +167,7 @@ function animate() {
     controls.update(delta);
     renderer.render(scene, camera);
 }
+
 animate();
 
 // Ajustar al redimensionar
