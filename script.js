@@ -6,7 +6,7 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x000000);
 
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-camera.position.set(0, 120.5, 3); // Aumentamos Y a 3.5 para elevar más la cámara
+camera.position.set(0, 1.5, 3); // Ajusta la posición inicial de la cámara
 
 // Render con menor resolución para móviles
 const isMobile = /Mobi|Android/i.test(navigator.userAgent);
@@ -19,18 +19,10 @@ document.body.appendChild(renderer.domElement);
 
 // Controles móviles: botones de movimiento y touch para mirar
 if (isMobile) {
-    // Crear contenedor de botones
     const controlsDiv = document.createElement('div');
-    controlsDiv.style.position = 'fixed';
-    controlsDiv.style.bottom = '30px';
-    controlsDiv.style.left = '50%';
-    controlsDiv.style.transform = 'translateX(-50%)';
-    controlsDiv.style.zIndex = '100';
-    controlsDiv.style.display = 'flex';
-    controlsDiv.style.gap = '18px';
+    controlsDiv.id = 'controlsDiv';
     document.body.appendChild(controlsDiv);
 
-    // Botones
     const btns = [
         { id: 'forward', label: '▲' },
         { id: 'left', label: '◀' },
@@ -41,22 +33,12 @@ if (isMobile) {
         const btn = document.createElement('button');
         btn.id = id;
         btn.innerText = label;
-        btn.style.fontSize = '2rem';
-        btn.style.padding = '12px 18px';
-        btn.style.borderRadius = '10px';
-        btn.style.border = 'none';
-        btn.style.background = '#222';
-        btn.style.color = '#fff';
-        btn.style.opacity = '0.85';
-        btn.style.touchAction = 'none';
         controlsDiv.appendChild(btn);
     });
 
-    // Estado de movimiento
     const moveState = { forward: false, back: false, left: false, right: false };
-    const moveSpeed = 8.5; // velocidad rápida
+    const moveSpeed = 2.5;
 
-    // Eventos de botones
     ['forward', 'back', 'left', 'right'].forEach(dir => {
         const btn = document.getElementById(dir);
         btn.addEventListener('touchstart', e => {
@@ -67,49 +49,23 @@ if (isMobile) {
             e.preventDefault();
             moveState[dir] = false;
         });
-        btn.addEventListener('touchcancel', e => {
-            e.preventDefault();
-            moveState[dir] = false;
-        });
     });
 
-    // Touch para mirar
-    let lastTouch = null;
-    renderer.domElement.addEventListener('touchstart', e => {
-        if (e.touches.length === 1) {
-            lastTouch = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-        }
-    });
-    renderer.domElement.addEventListener('touchmove', e => {
-        if (e.touches.length === 1 && lastTouch) {
-            const dx = e.touches[0].clientX - lastTouch.x;
-            const dy = e.touches[0].clientY - lastTouch.y;
-            controls.lon -= dx * 0.25; // sensibilidad horizontal
-            controls.lat -= dy * 0.25; // sensibilidad vertical
-            lastTouch = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-        }
-    });
-    renderer.domElement.addEventListener('touchend', e => {
-        lastTouch = null;
-    });
-
-    // Sobrescribir update para movimiento rápido
     const origUpdate = controls.update.bind(controls);
     controls.update = function (delta) {
-        // Movimiento
         const direction = new THREE.Vector3();
         if (moveState.forward) direction.z -= 1;
         if (moveState.back) direction.z += 1;
         if (moveState.left) direction.x -= 1;
         if (moveState.right) direction.x += 1;
+
         if (direction.lengthSq() > 0) {
             direction.normalize();
-            // Mover en la dirección de la cámara
             const move = new THREE.Vector3();
             camera.getWorldDirection(move);
             move.y = 0;
             move.normalize();
-            // Lateral
+
             const right = new THREE.Vector3().crossVectors(camera.up, move).normalize();
             const moveVec = new THREE.Vector3();
             moveVec.addScaledVector(move, direction.z);
@@ -117,16 +73,17 @@ if (isMobile) {
             moveVec.normalize().multiplyScalar(moveSpeed * delta);
             camera.position.add(moveVec);
         }
+
         origUpdate(delta);
     };
 }
 
-// Luz direccional (más eficiente que muchas)
+// Luz direccional
 const light = new THREE.DirectionalLight(0xffffff, 1);
 light.position.set(2, 4, 2);
 scene.add(light);
 
-// Luz ambiental (suave)
+// Luz ambiental
 const ambient = new THREE.AmbientLight(0x404040, 0.6);
 scene.add(ambient);
 
@@ -139,6 +96,12 @@ loader.load('model/room.glb', function (gltf) {
             child.receiveShadow = false;
         }
     });
+
+    // Centrar el modelo en la escena
+    const box = new THREE.Box3().setFromObject(gltf.scene);
+    const center = box.getCenter(new THREE.Vector3());
+    gltf.scene.position.sub(center);
+
     scene.add(gltf.scene);
     console.log("Modelo cargado correctamente");
 }, undefined, function (error) {
@@ -151,21 +114,13 @@ controls.lookSpeed = 0.08;
 controls.movementSpeed = 2.5;
 controls.lookVertical = true;
 
-// FPS limitador manual (60fps)
+// Animación
 const clock = new THREE.Clock();
-let lastTime = 0;
-const fpsLimit = 1 / 60;
-
 function animate() {
     requestAnimationFrame(animate);
     const delta = clock.getDelta();
-    const now = clock.elapsedTime;
-
-    if (now - lastTime >= fpsLimit) {
-        controls.update(delta);
-        renderer.render(scene, camera);
-        lastTime = now;
-    }
+    controls.update(delta);
+    renderer.render(scene, camera);
 }
 animate();
 
